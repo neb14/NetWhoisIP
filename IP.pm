@@ -12,7 +12,7 @@ use Regexp::IPv6 qw($IPv6_re);
 require Exporter;
 use Carp;
 
-@ISA = qw(Exporter AutoLoader);
+@ISA = 'Exporter';
 @EXPORT = qw(
 	     whoisip_query
 	    );
