@@ -14,18 +14,18 @@ use Carp;
 
 @ISA = qw(Exporter AutoLoader);
 @EXPORT = qw(
-	     whoisip_query
-	    );
+         whoisip_query
+        );
 $VERSION = '1.14';
 
 my %whois_servers = (
-	"RIPE"=>"whois.ripe.net",
-	"APNIC"=>"whois.apnic.net",
-	"KRNIC"=>"whois.krnic.net",
-	"LACNIC"=>"whois.lacnic.net",
-	"ARIN"=>"whois.arin.net",
-	"AFRINIC"=>"whois.afrinic.net",
-	);
+    "RIPE"=>"whois.ripe.net",
+    "APNIC"=>"whois.apnic.net",
+    "KRNIC"=>"whois.krnic.net",
+    "LACNIC"=>"whois.lacnic.net",
+    "ARIN"=>"whois.arin.net",
+    "AFRINIC"=>"whois.afrinic.net",
+    );
 
 ######################################
 # Public Subs
@@ -34,7 +34,7 @@ my %whois_servers = (
 sub whoisip_query {
     my($ip,$multiple_flag,$search_options) = @_;
     if(($ip !~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/)  &&  ($ip !~ /^$IPv6_re$/) ) {
-	croak("$ip is not a valid ip address");
+    croak("$ip is not a valid ip address");
     }
 DO_DEBUG("looking up $ip");
     my($response) = _do_lookup($ip,"ARIN",$multiple_flag,$search_options);
@@ -55,28 +55,28 @@ DO_DEBUG("do lookup $ip at $registrar");
     my @whois_response_array;
     LOOP: while($extraflag ne "") {
 DO_DEBUG("Entering loop $extraflag");
-	my $lookup_host = $whois_servers{$registrar};
-	($whois_response,$whois_response_hash) = _do_query($lookup_host,$ip,$multiple_flag);
+    my $lookup_host = $whois_servers{$registrar};
+    ($whois_response,$whois_response_hash) = _do_query($lookup_host,$ip,$multiple_flag);
         push(@whois_response_array,$whois_response_hash);
-	my($new_ip,$new_registrar) = _do_processing($whois_response,$registrar,$ip,$whois_response_hash,$search_options);
-	if(($new_ip ne $ip) || ($new_registrar ne $registrar) ) {
+    my($new_ip,$new_registrar) = _do_processing($whois_response,$registrar,$ip,$whois_response_hash,$search_options);
+    if(($new_ip ne $ip) || ($new_registrar ne $registrar) ) {
 DO_DEBUG("ip was $ip -- new ip is $new_ip");
 DO_DEBUG("registrar was $registrar -- new registrar is $new_registrar");
-	    $ip = $new_ip;
-	    $registrar = $new_registrar;
-	    $extraflag++;
-	    next LOOP;
-	}else{
-	    $extraflag="";
-	    last LOOP;
-	}
+        $ip = $new_ip;
+        $registrar = $new_registrar;
+        $extraflag++;
+        next LOOP;
+    }else{
+        $extraflag="";
+        last LOOP;
+    }
     }
 
 
     if(%{$whois_response_hash}) {
-	foreach (sort keys(%{$whois_response_hash}) ) {
+    foreach (sort keys(%{$whois_response_hash}) ) {
 DO_DEBUG("sub -- $_ -- $whois_response_hash->{$_}");
-	}
+    }
         return($whois_response_hash,\@whois_response_array);
     }else{
         return($whois_response,\@whois_response_array);
@@ -94,14 +94,14 @@ LOOP:while(1) {
       @response = <$sock>;
       close($sock);
       if($#response < 0) {
-	#DO_DEBUG("No valid response recieved from $registrar -- attempt $i ");
-	if($i <=3) {
-	  next LOOP;
-	}else{
-	  croak("No valid response for 4th time... dying....");
-	}
+    #DO_DEBUG("No valid response recieved from $registrar -- attempt $i ");
+    if($i <=3) {
+      next LOOP;
+    }else{
+      croak("No valid response for 4th time... dying....");
+    }
       }else{
-	last LOOP;
+    last LOOP;
       }
     }
 #Prevent killing the whois.arin.net --- they will disable an ip if greater than 40 queries per minute
@@ -109,17 +109,17 @@ LOOP:while(1) {
     my %hash_response;
     #DO_DEBUG("multiple flag = |$multiple_flag|");
     foreach my $line (@response) {
-	if($line =~ /^(.+?):\s+(.+)$/) {
-	  if( ($multiple_flag) && ($multiple_flag ne "") ) {
+    if($line =~ /^(.+?):\s+(.+)$/) {
+      if( ($multiple_flag) && ($multiple_flag ne "") ) {
 #Multiple_flag is set, so get all responses for a given record item
-	    #DO_DEBUG("Flag set ");
-	    push @{ $hash_response{$1} }, $2;
-	  }else{
+        #DO_DEBUG("Flag set ");
+        push @{ $hash_response{$1} }, $2;
+      }else{
 #Multiple_flag is not set, so only the last entry for any given record item
-	    #DO_DEBUG("Flag not set");
-	    $hash_response{$1} = $2;
-	   }
-	}
+        #DO_DEBUG("Flag not set");
+        $hash_response{$1} = $2;
+       }
+    }
     }
     return(\@response,\%hash_response);
 }
@@ -134,75 +134,75 @@ sub _do_processing {
     my $pattern1 = "TechPhone";
     my $pattern2 = "OrgTechPhone";
     if(($search_options) && ($search_options->[0] ne "") ) {
-	$pattern1 = $search_options->[0];
-	$pattern2 = $search_options->[1];
+    $pattern1 = $search_options->[0];
+    $pattern2 = $search_options->[1];
     }
     #DO_DEBUG("pattern1 = $pattern1 || pattern2 == $pattern2");
-		
-		
+        
+        
 
     LOOP:foreach (@{$response}) {
-  	if (/Contact information can be found in the (\S+)\s+database/) {
-	    $registrar = $1;
+    if (/Contact information can be found in the (\S+)\s+database/) {
+        $registrar = $1;
 DO_DEBUG("Contact -- registrar = $registrar -- trying again");
-	    last LOOP;
+        last LOOP;
 
-	}elsif((/OrgID:\s+(\S+)/i) || (/source:\s+(\S+)/i) && (!defined($hash_response->{$pattern1})) ) {
-	    my $val = $1;	
+    }elsif((/OrgID:\s+(\S+)/i) || (/source:\s+(\S+)/i) && (!defined($hash_response->{$pattern1})) ) {
+        my $val = $1;   
 DO_DEBUG("Orgname match: value was $val if not RIPE,APNIC,KRNIC,or LACNIC.. will skip");
-	    if($val =~ /^(?:RIPE|APNIC|KRNIC|LACNIC|AFRINIC)$/) {
-		$registrar = $val;
+        if($val =~ /^(?:RIPE|APNIC|KRNIC|LACNIC|AFRINIC)$/) {
+        $registrar = $val;
 DO_DEBUG(" RIPE - APNIC match --> $registrar --> trying again ");
-		last LOOP;
-	    }
-	}elsif(/Parent:\s+(\S+)/) {
-	    if(($1 ne "") && (!defined($hash_response->{'TechPhone'})) && (!defined($hash_response->{$pattern2})) ) {
-		$ip = $1;
+        last LOOP;
+        }
+    }elsif(/Parent:\s+(\S+)/) {
+        if(($1 ne "") && (!defined($hash_response->{'TechPhone'})) && (!defined($hash_response->{$pattern2})) ) {
+        $ip = $1;
 DO_DEBUG(" Parent match ip will be $ip --> trying again");
-		last LOOP;
-	    }
+        last LOOP;
+        }
 #Test Loop via Jason Kirk -- Thanks
-	  }elsif($registrar eq 'ARIN' && (/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
-#	    my $origIp = $ip;$ip = $1;
+      }elsif($registrar eq 'ARIN' && (/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
+#       my $origIp = $ip;$ip = $1;
 #Change 3-1-07
-	    my $origIp = $ip;$ip = '! '.$1;
-	    if ($ip !~ /\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3}/){
-	      $ip = $origIp;
-	    }
-#	}elsif((/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
-#	    $ip = $1;
-#	    $registrar = "ARIN";
+        my $origIp = $ip;$ip = '! '.$1;
+        if ($ip !~ /\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3}/){
+          $ip = $origIp;
+        }
+#   }elsif((/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
+#       $ip = $1;
+#       $registrar = "ARIN";
 DO_DEBUG("parens match $ip $registrar --> trying again");
-	}else{
-	    $ip = $ip;
-	    $registrar = $registrar;
-	}
+    }else{
+        $ip = $ip;
+        $registrar = $registrar;
+    }
     }
     return($ip,$registrar);
 }
-	    
+        
   
 
 sub _get_connect {
     my($whois_registrar) = @_;
     my $sock = IO::Socket::INET->new(
-				     PeerAddr=>$whois_registrar,
-				     PeerPort=>'43',
-				     Timeout=>'60',
-#				     Blocking=>'0',
-				    );
+                     PeerAddr=>$whois_registrar,
+                     PeerPort=>'43',
+                     Timeout=>'60',
+#                    Blocking=>'0',
+                    );
     unless($sock) {
-	carp("Failed to Connect to $whois_registrar at port print -$@");
-	sleep(5);
-	$sock = IO::Socket::INET->new(
-				      PeerAddr=>$whois_registrar,
-				      PeerPort=>'43',
-				      Timeout=>'60',
-#				      Blocking=>'0',
-				     );
-	unless($sock) {
-	    croak("Failed to Connect to $whois_registrar at port 43 for the second time - $@");
-	}
+    carp("Failed to Connect to $whois_registrar at port print -$@");
+    sleep(5);
+    $sock = IO::Socket::INET->new(
+                      PeerAddr=>$whois_registrar,
+                      PeerPort=>'43',
+                      Timeout=>'60',
+#                     Blocking=>'0',
+                     );
+    unless($sock) {
+        croak("Failed to Connect to $whois_registrar at port 43 for the second time - $@");
+    }
     }
     return($sock);
 }
