@@ -13,11 +13,11 @@ use File::Spec;
 require Exporter;
 use Carp;
 
-@ISA = 'Exporter';
+@ISA = qw(Exporter AutoLoader);
 @EXPORT = qw(
 	     whoisip_query
 	    );
-$VERSION = '1.17';
+$VERSION = '1.18';
 
 my %whois_servers = (
 	"RIPE"=>"whois.ripe.net",
@@ -33,13 +33,13 @@ my %whois_servers = (
 ######################################
 
 sub whoisip_query {
-    my($ip,$reg,$multiple_flag,$search_options) = @_;
+    my($ip,$reg,$multiple_flag,$raw_flag,$search_options) = @_;
 	# It allows to set the first registry to query
     if(($ip !~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/)  &&  ($ip !~ /^$IPv6_re$/) ) {
 				croak("$ip is not a valid ip address");
     }
 #DO_DEBUG("looking up $ip");
-    my($response) = _do_lookup($ip,$reg,$multiple_flag,$search_options);
+    my($response) = _do_lookup($ip,$reg,$multiple_flag,$raw_flag,$search_options);
     return($response);
 }
 
@@ -48,12 +48,12 @@ sub whoisip_query {
 #Private Subs
 ######################################
 sub _do_lookup {
-    my($ip,$registrar,$multiple_flag,$search_options) = @_;
+    my($ip,$registrar,$multiple_flag,$raw_flag,$search_options) = @_;
 #DO_DEBUG("do lookup $ip at $registrar");
 #let's not beat up on them too much
     my $extraflag = "1";
     my $whois_response;
-    my $whois_response2; # Modif: Added line, keep response (raw)
+    my $whois_raw_response;
     my $whois_response_hash;
     my @whois_response_array;
     LOOP: while($extraflag ne "") {
@@ -61,7 +61,7 @@ sub _do_lookup {
 	my $lookup_host = $whois_servers{$registrar};
 	($whois_response,$whois_response_hash) = _do_query($lookup_host,$ip,$multiple_flag);
 	push(@whois_response_array,$whois_response_hash);
-	push(@{$whois_response2}, @{$whois_response}); # Modif: Added line, keep response (raw)
+	push(@{$whois_raw_response}, @{$whois_response});
 	my($new_ip,$new_registrar) = _do_processing($whois_response,$registrar,$ip,$whois_response_hash,$search_options);
 	if(($new_ip ne $ip) || ($new_registrar ne $registrar) ) {
 #DO_DEBUG("ip was $ip -- new ip is $new_ip");
@@ -76,7 +76,10 @@ sub _do_lookup {
 	}
     }
     
-    return ($whois_response2); # Modif: Added line, keep response (raw)
+		# Return raw response from registrar
+		if( ($raw_flag) && ($raw_flag ne "") ) {
+		    return ($whois_raw_response);
+		}
 
 
     if(%{$whois_response_hash}) {
@@ -272,12 +275,14 @@ Net::Whois::IP - Perl extension for looking up the whois information for ip addr
 #many records have to be searched several times to
 #get to the correct information, this array contains the responses
 #from each level
-  my ($response,$array_of_responses) = whoisip_query($ip,$optional_multiple_flag,$option_array_of_search_options);
+  my ($response,$array_of_responses) = whoisip_query($ip,$optional_multiple_flag,$optional_raw_flag,$option_array_of_search_options);
 #if $optional_multiple_flag is not null, all possible responses for a give record will be returned
 #for example, normally only the last instance of Tech phone will be give if record
 #contains more than one, however, setting this flag to a not null will return both is an array.
 #The other consequence, is that all records returned become references to an array and must be 
 #dereferenced to utilize
+#if $optional_raw_flag is not null, response will be a reference to an array containing the raw
+#response from the registrar instead of a reference to a hash.
 #If $option_array_of_search_options is not null, the first two entries will be used to replace
 #TechPhone and OrgTechPhone is the search method.  This is fairly dangerous, and can
 #cause the module not to work at all if set incorrectly
@@ -297,9 +302,15 @@ foreach ( sort keys %$response ){
           }
 }
 
-#$optonal_array_of_search_options set but not $optional_multiple_flag
+#$optional_raw_flag set to a value
+my $response = whoisip_query( $ip,"","true");
+foreach (@{$response}) {
+          print $_;
+}
+
+#$optonal_array_of_search_options set but not $optional_multiple_flag or $optional_raw_flag
 my $search_options = ["NetName","OrgName"];
-my $response = whois_query($ip,"",$search_options);
+my $response = whois_query($ip,"","",$search_options);
 foreach (sort keys(%{$response}) ) {
            print "$_ $response->{$_} \n";
 }
