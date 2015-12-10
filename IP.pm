@@ -9,6 +9,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
 use IO::Socket;
 use Regexp::IPv6 qw($IPv6_re);
+use File::Spec;
 require Exporter;
 use Carp;
 
@@ -16,7 +17,7 @@ use Carp;
 @EXPORT = qw(
 	     whoisip_query
 	    );
-$VERSION = '1.14';
+$VERSION = '1.16';
 
 my %whois_servers = (
 	"RIPE"=>"whois.ripe.net",
@@ -32,12 +33,13 @@ my %whois_servers = (
 ######################################
 
 sub whoisip_query {
-    my($ip,$multiple_flag,$search_options) = @_;
+    my($ip,$reg,$multiple_flag,$search_options) = @_;
+	# It allows to set the first registry to query
     if(($ip !~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/)  &&  ($ip !~ /^$IPv6_re$/) ) {
-	croak("$ip is not a valid ip address");
+				croak("$ip is not a valid ip address");
     }
-DO_DEBUG("looking up $ip");
-    my($response) = _do_lookup($ip,"ARIN",$multiple_flag,$search_options);
+#DO_DEBUG("looking up $ip");
+    my($response) = _do_lookup($ip,$reg,$multiple_flag,$search_options);
     return($response);
 }
 
@@ -47,21 +49,23 @@ DO_DEBUG("looking up $ip");
 ######################################
 sub _do_lookup {
     my($ip,$registrar,$multiple_flag,$search_options) = @_;
-DO_DEBUG("do lookup $ip at $registrar");
+#DO_DEBUG("do lookup $ip at $registrar");
 #let's not beat up on them too much
     my $extraflag = "1";
     my $whois_response;
+    my $whois_response2; # Modif: Added line, keep response (raw)
     my $whois_response_hash;
     my @whois_response_array;
     LOOP: while($extraflag ne "") {
-DO_DEBUG("Entering loop $extraflag");
+#DO_DEBUG("Entering loop $extraflag");
 	my $lookup_host = $whois_servers{$registrar};
 	($whois_response,$whois_response_hash) = _do_query($lookup_host,$ip,$multiple_flag);
-        push(@whois_response_array,$whois_response_hash);
+	push(@whois_response_array,$whois_response_hash);
+	push(@{$whois_response2}, @{$whois_response}); # Modif: Added line, keep response (raw)
 	my($new_ip,$new_registrar) = _do_processing($whois_response,$registrar,$ip,$whois_response_hash,$search_options);
 	if(($new_ip ne $ip) || ($new_registrar ne $registrar) ) {
-DO_DEBUG("ip was $ip -- new ip is $new_ip");
-DO_DEBUG("registrar was $registrar -- new registrar is $new_registrar");
+#DO_DEBUG("ip was $ip -- new ip is $new_ip");
+#DO_DEBUG("registrar was $registrar -- new registrar is $new_registrar");
 	    $ip = $new_ip;
 	    $registrar = $new_registrar;
 	    $extraflag++;
@@ -71,11 +75,13 @@ DO_DEBUG("registrar was $registrar -- new registrar is $new_registrar");
 	    last LOOP;
 	}
     }
+    
+    return ($whois_response2); # Modif: Added line, keep response (raw)
 
 
     if(%{$whois_response_hash}) {
 	foreach (sort keys(%{$whois_response_hash}) ) {
-DO_DEBUG("sub -- $_ -- $whois_response_hash->{$_}");
+#DO_DEBUG("sub -- $_ -- $whois_response_hash->{$_}");
 	}
         return($whois_response_hash,\@whois_response_array);
     }else{
@@ -90,7 +96,14 @@ sub _do_query{
 LOOP:while(1) {    
       $i++;
       my $sock = _get_connect($registrar);
-      print $sock "$ip\n";
+      # Replaced by: if ARIN add n param, if RIPE or Afrinic add -B param
+      if    ($registrar eq 'whois.arin.net') { 
+          print $sock "n $ip\n";  
+      } elsif ($registrar eq 'whois.ripe.net' or $registrar eq "whois.afrinic.net") { 
+          print $sock "-B $ip\n"; 
+      } else  { 
+          print $sock "$ip\n";    
+      }
       @response = <$sock>;
       close($sock);
       if($#response < 0) {
@@ -109,7 +122,7 @@ LOOP:while(1) {
     my %hash_response;
     #DO_DEBUG("multiple flag = |$multiple_flag|");
     foreach my $line (@response) {
-	if($line =~ /^(.+?):\s+(.+)$/) {
+	if($line =~ /^(.+):\s+(.+)$/) {
 	  if( ($multiple_flag) && ($multiple_flag ne "") ) {
 #Multiple_flag is set, so get all responses for a given record item
 	    #DO_DEBUG("Flag set ");
@@ -144,35 +157,51 @@ sub _do_processing {
     LOOP:foreach (@{$response}) {
   	if (/Contact information can be found in the (\S+)\s+database/) {
 	    $registrar = $1;
-DO_DEBUG("Contact -- registrar = $registrar -- trying again");
+#DO_DEBUG("Contact -- registrar = $registrar -- trying again");
 	    last LOOP;
 
 	}elsif((/OrgID:\s+(\S+)/i) || (/source:\s+(\S+)/i) && (!defined($hash_response->{$pattern1})) ) {
 	    my $val = $1;	
-DO_DEBUG("Orgname match: value was $val if not RIPE,APNIC,KRNIC,or LACNIC.. will skip");
+#DO_DEBUG("Orgname match: value was $val if not RIPE,APNIC,KRNIC,or LACNIC.. will skip");
 	    if($val =~ /^(?:RIPE|APNIC|KRNIC|LACNIC|AFRINIC)$/) {
 		$registrar = $val;
-DO_DEBUG(" RIPE - APNIC match --> $registrar --> trying again ");
+#DO_DEBUG(" RIPE - APNIC match --> $registrar --> trying again ");
 		last LOOP;
 	    }
 	}elsif(/Parent:\s+(\S+)/) {
-	    if(($1 ne "") && (!defined($hash_response->{'TechPhone'})) && (!defined($hash_response->{$pattern2})) ) {
+	    # Modif: if(($1 ne "") && (!defined($hash_response->{'TechPhone'})) && (!defined($hash_response->{$pattern2})) ) {
+		# Use $pattern1 instead of default TechPhone
+	    if(($1 ne "") && (!defined($hash_response->{$pattern1})) && (!defined($hash_response->{$pattern2})) ) {
+		# End Modif
 		$ip = $1;
-DO_DEBUG(" Parent match ip will be $ip --> trying again");
+#DO_DEBUG(" Parent match ip will be $ip --> trying again");
 		last LOOP;
 	    }
 #Test Loop via Jason Kirk -- Thanks
 	  }elsif($registrar eq 'ARIN' && (/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
-#	    my $origIp = $ip;$ip = $1;
-#Change 3-1-07
+##Change 3-1-07
+#	    my $origIp = $ip;$ip = '! '.$1;
+#	    if ($ip !~ /\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3}/){
+#	      $ip = $origIp;
+#	    }
 	    my $origIp = $ip;$ip = '! '.$1;
+		# Modif: Keep the smallest block
+	    if ($origIp =~ /! NET-(\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3})/) {
+	      my $orIP = $1;
+	      if ($ip =~ /! NET-(\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3})/) {
+	        my $nwIP = $1;
+	        if (pack('C4', split(/\-/,$orIP)) ge pack('C4', split(/\-/,$nwIP))) {
+			$ip = $origIp;
+	        }
+	      }
+	    }
 	    if ($ip !~ /\d{1,3}\-\d{1,3}\-\d{1,3}\-\d{1,3}/){
 	      $ip = $origIp;
 	    }
 #	}elsif((/.+\((.+)\).+$/) && ($_ !~ /.+\:.+/)) {
 #	    $ip = $1;
 #	    $registrar = "ARIN";
-DO_DEBUG("parens match $ip $registrar --> trying again");
+#DO_DEBUG("parens match $ip $registrar --> trying again");
 	}else{
 	    $ip = $ip;
 	    $registrar = $registrar;
@@ -210,7 +239,12 @@ sub _get_connect {
 sub DO_DEBUG {
     my(@stuff) = @_;
     my $date = scalar localtime;
-    open(DEBUG,">>/tmp/Net.WhoisIP.log") or warn "Unable to open /tmp/$0.log";
+    my $tmp_dir = File::Spec->tmpdir();
+    if(!defined($tmp_dir)) {
+	$tmp_dir = "/tmp/";
+    }
+    my $outdebug = $tmp_dir . "/Net.WhoisIP.log";
+    open(DEBUG,">>$outdebug") or warn "Unable to open $outdebug";
     foreach my $item ( @stuff) {
         print DEBUG "$date|$item|\n";
     }
