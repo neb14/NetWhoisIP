@@ -13,7 +13,7 @@ use File::Spec;
 require Exporter;
 use Carp;
 
-@ISA = qw(Exporter AutoLoader);
+@ISA = 'Exporter';
 @EXPORT = qw(
 	     whoisip_query
 	    );
